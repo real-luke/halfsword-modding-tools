@@ -120,6 +120,20 @@ for %%F in (Cook.bat YourPakName.bat) do (
     )
 )
 
+REM Resolve Batch folder path explicitly as a fallback
+pushd "%~dp0..\..\Batch" 2>nul && (
+    set "BATCH_DIR=!CD!"
+    popd
+    for %%F in (Cook.bat YourPakName.bat) do (
+        if exist "!BATCH_DIR!\%%F" (
+            if not exist "!UNPACK_DIR!\HalfswordUE5\%%F" (
+                echo Copying %%F to project ^(resolved^)...
+                copy /Y "!BATCH_DIR!\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
+            )
+        )
+    )
+) 2>nul
+
 REM === Delete crash-causing MetaHuman hair files ===
 set "HAIR_DIR=!UNPACK_DIR!\HalfswordUE5\Content\MetaHumans\Taro\MaleHair\Hair"
 if exist "!HAIR_DIR!" (
@@ -215,4 +229,5 @@ echo.
 echo Setup complete!
 echo Unpacked project is at: !SOURCE_DIR!\HalfswordUE5
 echo.
+explorer "!SOURCE_DIR!\HalfswordUE5"
 pause
