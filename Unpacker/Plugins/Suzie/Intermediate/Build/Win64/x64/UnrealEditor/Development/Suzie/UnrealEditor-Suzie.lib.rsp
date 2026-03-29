@@ -1,0 +1,13 @@
+/NOLOGO
+/errorReport:prompt
+/MACHINE:x64
+/SUBSYSTEM:WINDOWS
+/DEF
+/NAME:"UnrealEditor-Suzie.dll"
+/IGNORE:4221
+/NODEFAULTLIB
+"C:\Users\lukes\Desktop\HS Modding\Unpacked\HalfswordUE5\Intermediate\Build\Win64\x64\HalfSwordUE5Editor\Development\UnrealEd\SharedPCH.UnrealEd.Project.NonOptimized.ValApi.Cpp20.h.obj"
+"C:\Users\lukes\Desktop\HS Modding\Unpacked\HalfswordUE5\Plugins\Suzie\Intermediate\Build\Win64\x64\UnrealEditor\Development\Suzie\SuzieDecompressionHelper.cpp.obj"
+"C:\Users\lukes\Desktop\HS Modding\Unpacked\HalfswordUE5\Plugins\Suzie\Intermediate\Build\Win64\x64\UnrealEditor\Development\Suzie\SuziePlugin.cpp.obj"
+"C:\Users\lukes\Desktop\HS Modding\Unpacked\HalfswordUE5\Plugins\Suzie\Intermediate\Build\Win64\x64\UnrealEditor\Development\Suzie\Default.rc2.res"
+/OUT:"C:\Users\lukes\Desktop\HS Modding\Unpacked\HalfswordUE5\Plugins\Suzie\Intermediate\Build\Win64\x64\UnrealEditor\Development\Suzie\UnrealEditor-Suzie.lib"

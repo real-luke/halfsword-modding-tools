@@ -1,0 +1,16 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "c:\\users\\lukes\\desktop\\hs modding\\unpacked\\halfswordue5\\plugins\\suzie\\source\\suzie\\private\\suziedecompressionhelper.cpp",
+        "ProvidedModule": "",
+        "PCH": "c:\\users\\lukes\\desktop\\hs modding\\unpacked\\halfswordue5\\intermediate\\build\\win64\\x64\\halfswordue5editor\\development\\unrealed\\sharedpch.unrealed.project.nonoptimized.valapi.cpp20.h.pch",
+        "Includes": [
+            "c:\\users\\lukes\\desktop\\hs modding\\unpacked\\halfswordue5\\plugins\\suzie\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\suzie\\definitions.suzie.h",
+            "c:\\users\\lukes\\desktop\\hs modding\\unpacked\\halfswordue5\\plugins\\suzie\\source\\suzie\\private\\suziedecompressionhelper.h",
+            "d:\\epic games\\ue_5.4\\engine\\source\\thirdparty\\zlib\\1.3\\include\\zlib.h",
+            "d:\\epic games\\ue_5.4\\engine\\source\\thirdparty\\zlib\\1.3\\include\\zconf.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}
