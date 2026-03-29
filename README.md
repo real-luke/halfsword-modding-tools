@@ -1,4 +1,4 @@
-[![Join the Discord server](https://img.shields.io)](https://discord.gg/NNGEyU3qa3))
+[![Join the Discord server](https://img.shields.io)](https://discord.gg/NNGEyU3qa3)
 
 # Half Sword Modding Tools
 
