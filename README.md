@@ -6,9 +6,9 @@ Tools and scripts for modding Half Sword.
 
 ## Contents
 
-**Batch scripts** — run from your mod project folder to cook and package mods, or run Setup.bat once to unpack the game source.
+**Batch scripts** — run from your mod project folder to cook and package mods, or run the Unpacker Setup.bat once to unpack the game source.
 
-**CustomMaps** — a UE4SS Lua mod that adds a map selector to free mode and automatically discovers custom maps from a `CustomMaps` folder, including support for map metadata, thumbnails, and author subfolders.
+**CustomMaps** (soon) — a UE4SS Lua mod that adds a map selector to free mode and automatically discovers custom maps from a `CustomMaps` folder, including support for map metadata, thumbnails, and author subfolders.
 
 ## Requirements
 
