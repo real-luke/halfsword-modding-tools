@@ -114,25 +114,11 @@ if exist "%~dp0Content\DynamicClasses\output.jmap" (
 
 REM === Copy cook and package scripts to project ===
 for %%F in (Cook.bat YourPakName.bat) do (
-    if exist "%~dp0..\..\Batch\%%F" (
+    if exist "%~dp0..\Batch\%%F" (
         echo Copying %%F to project...
-        copy /Y "%~dp0..\..\Batch\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
+        copy /Y "%~dp0..\Batch\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
     )
 )
-
-REM Resolve Batch folder path explicitly as a fallback
-pushd "%~dp0..\..\Batch" 2>nul && (
-    set "BATCH_DIR=!CD!"
-    popd
-    for %%F in (Cook.bat YourPakName.bat) do (
-        if exist "!BATCH_DIR!\%%F" (
-            if not exist "!UNPACK_DIR!\HalfswordUE5\%%F" (
-                echo Copying %%F to project ^(resolved^)...
-                copy /Y "!BATCH_DIR!\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
-            )
-        )
-    )
-) 2>nul
 
 REM === Delete crash-causing MetaHuman hair files ===
 set "HAIR_DIR=!UNPACK_DIR!\HalfswordUE5\Content\MetaHumans\Taro\MaleHair\Hair"
