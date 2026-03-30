@@ -87,6 +87,14 @@ if exist "%~dp0HalfswordUE5.uproject" (
     echo [!] HalfswordUE5.uproject not found next to this script - skipping.
 )
 
+REM === Copy Binaries ===
+if exist "%~dp0Binaries" (
+    echo Copying Binaries...
+    xcopy /E /I /Y "%~dp0Binaries" "!UNPACK_DIR!\HalfswordUE5\Binaries" >nul
+) else (
+    echo [!] Binaries folder not found next to this script - skipping.
+)
+
 REM === Copy Source folder (dummied module) ===
 if exist "%~dp0Source" (
     echo Copying Source folder...
