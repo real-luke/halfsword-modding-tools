@@ -1,7 +1,8 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set "CFG=%LOCALAPPDATA%\HalfSwordModTools\paths.ini"
+set "TOOLS_DIR=%LOCALAPPDATA%\HalfSwordModTools"
+set "CFG=!TOOLS_DIR!\paths.ini"
 set "AES_KEY=0xBCBF7B45A4A8150D06F7B955BC25EF5CE603470F508302CAD0EB48FEA2D91517"
 set "PAK=pakchunk0-Windows.pak"
 
@@ -30,22 +31,56 @@ if not exist "!PAKS_DIR!" (
 
 REM === Ask where to put the unpacked source ===
 if not defined SOURCE_DIR set "SOURCE_DIR=C:\HalfSwordSource"
-set /p "SOURCE_DIR=Source folder (leave blank for !SOURCE_DIR!): "
+set /p "SOURCE_DIR=Where do you want to put the unpacked source folder (leave blank for !SOURCE_DIR!): "
 if "!SOURCE_DIR!"=="" set "SOURCE_DIR=C:\HalfSwordSource"
 set "SOURCE_DIR=!SOURCE_DIR:"=!"
 
 REM === Save paths ===
-if not exist "%LOCALAPPDATA%\HalfSwordModTools\" mkdir "%LOCALAPPDATA%\HalfSwordModTools\"
+if not exist "!TOOLS_DIR!\" mkdir "!TOOLS_DIR!\"
 (
     if defined ENGINE_DIR echo ENGINE_DIR=!ENGINE_DIR!
     echo GAME_DIR=!GAME_DIR!
     echo SOURCE_DIR=!SOURCE_DIR!
 ) > "%CFG%"
 
+REM === Prepare repak ===
+set "REPAK_EXE=!TOOLS_DIR!\repak.exe"
+set "OODLE_DLL=!TOOLS_DIR!\oo2core_9_win64.dll"
+set "REPAK_CMD=repak"
+set "REPAK_MODE=PATH"
+
+if exist "%~dp0repak.exe" (
+    copy /Y "%~dp0repak.exe" "!REPAK_EXE!" >nul
+)
+
+if exist "%~dp0oo2core_9_win64.dll" (
+    copy /Y "%~dp0oo2core_9_win64.dll" "!OODLE_DLL!" >nul
+)
+
+if exist "!REPAK_EXE!" (
+    set "REPAK_CMD=!REPAK_EXE!"
+    set "REPAK_MODE=BUNDLED"
+) else (
+    where repak >nul 2>&1
+    if errorlevel 1 (
+        echo [!] repak.exe not found in !TOOLS_DIR! and not found in PATH.
+        echo [!] Put repak.exe next to this script or install repak using the installer.
+        pause & exit /b
+    )
+)
+
+if /I "!REPAK_MODE!"=="BUNDLED" (
+    echo Using bundled repak from !TOOLS_DIR!.
+    if not exist "!OODLE_DLL!" (
+        echo [!] Warning: oo2core_9_win64.dll is not in !TOOLS_DIR!; unpack may fail on Oodle-compressed assets.
+    )
+) else (
+    echo Bundled repak unavailable - using repak from PATH.
+)
+
 REM === Unpack pak ===
 set "PAK_PATH=!PAKS_DIR!\%PAK%"
 set "REPAK_OUT=!PAKS_DIR!\pakchunk0-Windows"
-set "MIN_REPAK_SIZE_BYTES=1073741824"
 
 if not exist "!PAK_PATH!" (
     echo [!] Could not find !PAK_PATH!
@@ -63,26 +98,24 @@ if exist "!REPAK_OUT!" (
 )
 
 echo Unpacking %PAK%...
-repak --aes-key %AES_KEY% unpack "!PAK_PATH!"
+if /I "!REPAK_MODE!"=="BUNDLED" (
+    pushd "!TOOLS_DIR!"
+    "!REPAK_CMD!" --aes-key %AES_KEY% unpack "!PAK_PATH!"
+    set "REPAK_EXIT=!ERRORLEVEL!"
+    popd
+) else (
+    "!REPAK_CMD!" --aes-key %AES_KEY% unpack "!PAK_PATH!"
+    set "REPAK_EXIT=!ERRORLEVEL!"
+)
 
-if errorlevel 1 (
+if not "!REPAK_EXIT!"=="0" (
     echo [!] repak reported an error and unpack did not complete.
-    echo [!] If you saw "Oodle initialization failed previously", update repak and verify game files.
+    echo [!] If you saw "Oodle initialization failed previously", verify game files and make sure the bundled repak build is up to date.
     pause & exit /b
 )
 
 if not exist "!REPAK_OUT!" (
     echo [!] Unpack failed or output folder not found: !REPAK_OUT!
-    pause & exit /b
-)
-
-for /f %%S in ('powershell -NoProfile -Command "$sum=(Get-ChildItem -LiteralPath ''!REPAK_OUT!'' -Recurse -File -ErrorAction SilentlyContinue ^| Measure-Object -Property Length -Sum).Sum; if ($null -eq $sum) {$sum=0}; Write-Output $sum"') do set "REPAK_SIZE_BYTES=%%S"
-
-for /f %%S in ('powershell -NoProfile -Command "$sum=(Get-ChildItem -LiteralPath ''!REPAK_OUT!'' -Recurse -File -ErrorAction SilentlyContinue ^| Measure-Object -Property Length -Sum).Sum; if ($null -eq $sum) {$sum=0}; if ($sum -ge !MIN_REPAK_SIZE_BYTES!) {'OK'} else {'SMALL'}"') do set "REPAK_SIZE_STATUS=%%S"
-
-if /I "!REPAK_SIZE_STATUS!"=="SMALL" (
-    echo [!] Unpack output is suspiciously small: !REPAK_SIZE_BYTES! bytes. This usually means unpack failed early.
-    echo [!] Try updating repak and verifying Half Sword files in Steam, then run Setup.bat again.
     pause & exit /b
 )
 
@@ -148,8 +181,11 @@ if exist "%~dp0Content\DynamicClasses\output.jmap" (
 
 REM === Copy cook and package scripts to project ===
 for %%F in (Cook.bat YourPakName.bat) do (
-    if exist "%~dp0..\Batch\%%F" (
+    if exist "%~dp0..\Scripts\%%F" (
         echo Copying %%F to project...
+        copy /Y "%~dp0..\Scripts\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
+    ) else if exist "%~dp0..\Batch\%%F" (
+        echo Copying %%F from legacy Batch folder...
         copy /Y "%~dp0..\Batch\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
     )
 )
