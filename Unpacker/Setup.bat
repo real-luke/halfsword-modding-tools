@@ -49,11 +49,15 @@ set "OODLE_DLL=!TOOLS_DIR!\oo2core_9_win64.dll"
 set "REPAK_CMD=repak"
 set "REPAK_MODE=PATH"
 
-if exist "%~dp0repak.exe" (
+if exist "%~dp0..\Binaries\repak.exe" (
+    copy /Y "%~dp0..\Binaries\repak.exe" "!REPAK_EXE!" >nul
+) else if exist "%~dp0repak.exe" (
     copy /Y "%~dp0repak.exe" "!REPAK_EXE!" >nul
 )
 
-if exist "%~dp0oo2core_9_win64.dll" (
+if exist "%~dp0..\Binaries\oo2core_9_win64.dll" (
+    copy /Y "%~dp0..\Binaries\oo2core_9_win64.dll" "!OODLE_DLL!" >nul
+) else if exist "%~dp0oo2core_9_win64.dll" (
     copy /Y "%~dp0oo2core_9_win64.dll" "!OODLE_DLL!" >nul
 )
 
