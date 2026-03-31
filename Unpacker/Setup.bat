@@ -45,17 +45,44 @@ if not exist "%LOCALAPPDATA%\HalfSwordModTools\" mkdir "%LOCALAPPDATA%\HalfSword
 REM === Unpack pak ===
 set "PAK_PATH=!PAKS_DIR!\%PAK%"
 set "REPAK_OUT=!PAKS_DIR!\pakchunk0-Windows"
+set "MIN_REPAK_SIZE_BYTES=1073741824"
 
 if not exist "!PAK_PATH!" (
     echo [!] Could not find !PAK_PATH!
     pause & exit /b
 )
 
+if exist "!REPAK_OUT!" (
+    echo Found leftover unpack folder at !REPAK_OUT! - deleting it first...
+    rmdir /S /Q "!REPAK_OUT!"
+    if exist "!REPAK_OUT!" (
+        echo [!] Could not delete stale folder: !REPAK_OUT!
+        echo [!] Close Explorer/Editor windows using it, then run Setup.bat again.
+        pause & exit /b
+    )
+)
+
 echo Unpacking %PAK%...
 repak --aes-key %AES_KEY% unpack "!PAK_PATH!"
 
+if errorlevel 1 (
+    echo [!] repak reported an error and unpack did not complete.
+    echo [!] If you saw "Oodle initialization failed previously", update repak and verify game files.
+    pause & exit /b
+)
+
 if not exist "!REPAK_OUT!" (
     echo [!] Unpack failed or output folder not found: !REPAK_OUT!
+    pause & exit /b
+)
+
+for /f %%S in ('powershell -NoProfile -Command "$sum=(Get-ChildItem -LiteralPath ''!REPAK_OUT!'' -Recurse -File -ErrorAction SilentlyContinue ^| Measure-Object -Property Length -Sum).Sum; if ($null -eq $sum) {$sum=0}; Write-Output $sum"') do set "REPAK_SIZE_BYTES=%%S"
+
+for /f %%S in ('powershell -NoProfile -Command "$sum=(Get-ChildItem -LiteralPath ''!REPAK_OUT!'' -Recurse -File -ErrorAction SilentlyContinue ^| Measure-Object -Property Length -Sum).Sum; if ($null -eq $sum) {$sum=0}; if ($sum -ge !MIN_REPAK_SIZE_BYTES!) {'OK'} else {'SMALL'}"') do set "REPAK_SIZE_STATUS=%%S"
+
+if /I "!REPAK_SIZE_STATUS!"=="SMALL" (
+    echo [!] Unpack output is suspiciously small: !REPAK_SIZE_BYTES! bytes. This usually means unpack failed early.
+    echo [!] Try updating repak and verifying Half Sword files in Steam, then run Setup.bat again.
     pause & exit /b
 )
 
@@ -77,7 +104,6 @@ if exist "!UNPACK_DIR!\Engine" (
     echo Removing Engine folder...
     rmdir /S /Q "!UNPACK_DIR!\Engine"
 )
-
 
 REM === Overwrite .uproject with pre-configured version ===
 if exist "%~dp0HalfswordUE5.uproject" (
