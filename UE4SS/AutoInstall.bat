@@ -202,7 +202,7 @@ if (-not $SkipLuaInstall) {
         if (-not (Test-Path $ModsFolder)) { New-Item -Path $ModsFolder -ItemType Directory -Force | Out-Null }
         
         foreach ($Mod in $ValidModsFound) {
-            Write-Host "Moving Lua mod: $($Mod.Name)" -ForegroundColor Green
+            Write-Host "Installing Lua mod: $($Mod.Name)" -ForegroundColor Green
             Move-Item -Path $Mod.FullName -Destination $ModsFolder -Force
             $LuaModsInstalled = $true
         }
@@ -221,7 +221,7 @@ if ($PakFiles.Count -gt 0) {
     if (-not (Test-Path $PaksFolder)) { New-Item -Path $PaksFolder -ItemType Directory -Force | Out-Null }
     
     foreach ($Pak in $PakFiles) {
-        Write-Host "Moving Pak: $($Pak.Name)" -ForegroundColor Green
+        Write-Host "Installing Pak: $($Pak.Name)" -ForegroundColor Green
         Move-Item -Path $Pak.FullName -Destination $PaksFolder -Force
         $PaksInstalled = $true
     }
