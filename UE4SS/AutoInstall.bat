@@ -1,6 +1,10 @@
 <# :
 @echo off
 set "SCRIPT_DIR=%~dp0"
+set "UE4SS_FORCE_DEV=0"
+
+if /i "%~1"=="-dev" set "UE4SS_FORCE_DEV=1"
+if /i "%~1"=="--dev" set "UE4SS_FORCE_DEV=1"
 
 echo %~dp0 | findstr /i "Temp" >nul
 if %errorlevel%==0 (
@@ -25,7 +29,7 @@ exit /b
 # POWERSHELL LOGIC STARTS HERE
 # =====================================================================
 
-Write-Host "Locating Half Sword..." -ForegroundColor Cyan
+Write-Host "`nLocating Half Sword..." -ForegroundColor Cyan
 $GameDir = $null
 $ScriptDir = $env:SCRIPT_DIR
 if (-not $ScriptDir) {
@@ -79,7 +83,7 @@ if (-not (Test-Path $TargetBinaries)) {
 # --- UE4SS INSTALLATION LOGIC ---
 $DoInstall = $true
 if (Test-Path $Ue4ssFolder) {
-    Write-Host "`n[!] Existing 'ue4ss' folder detected." -ForegroundColor Yellow
+    Write-Host "`nExisting ue4ss installation found." -ForegroundColor Yellow
     $Response = Read-Host "Would you like to Reinstall/Update to the latest experimental release? (Y/N)"
     if ($Response -notmatch "^[Yy]$") { $DoInstall = $false }
 }
@@ -88,13 +92,31 @@ if ($DoInstall) {
     try {
         $ApiUrl = "https://api.github.com/repos/UE4SS-RE/RE-UE4SS/releases/tags/experimental-latest"
         $Release = Invoke-RestMethod -Uri $ApiUrl -Headers @{ "User-Agent" = "halfsword-autoinstall" }
-        $Asset = $Release.assets | Where-Object { $_.name -like "UE4SS*.zip" -and $_.name -notlike "*zDEV*" } | Select-Object -First 1
+
+        $InstallType = "Normal"
+        $DocsFolder = Join-Path $Ue4ssFolder "Docs"
+        $ForceDevInstall = ($env:UE4SS_FORCE_DEV -eq "1")
+
+        if ($ForceDevInstall) {
+            $InstallType = "Developer"
+            Write-Host "Developer install requested via launch flag." -ForegroundColor DarkCyan
+        } elseif ((Test-Path $Ue4ssFolder) -and (Test-Path $DocsFolder)) {
+            $InstallType = "Developer"
+            Write-Host "Keeping existing Developer UE4SS install." -ForegroundColor DarkCyan
+        }
+
+        if ($InstallType -eq "Developer") {
+            $Asset = $Release.assets | Where-Object { $_.name -like "zDEV-UE4SS*.zip" } | Select-Object -First 1
+        } else {
+            $Asset = $Release.assets | Where-Object { $_.name -like "UE4SS*.zip" -and $_.name -notlike "*zDEV*" } | Select-Object -First 1
+        }
+
         if (-not $Asset) {
-            throw "No UE4SS zip asset found in experimental-latest release."
+            throw "No $InstallType UE4SS zip asset found in experimental-latest release."
         }
         $ZipPath = Join-Path $env:TEMP "UE4SS_Temp.zip"
         
-        Write-Host "Downloading and Installing UE4SS..." -ForegroundColor Cyan
+        Write-Host "Downloading and installing UE4SS..." -ForegroundColor Cyan
         Invoke-WebRequest -Uri $Asset.browser_download_url -OutFile $ZipPath
         Expand-Archive -Path $ZipPath -DestinationPath $TargetBinaries -Force
         Remove-Item $ZipPath -ErrorAction SilentlyContinue
@@ -105,7 +127,7 @@ if ($DoInstall) {
 }
 
 # --- LUA MOD INSTALLATION ---
-Write-Host "`nScanning for valid UE4SS Lua mod folders..." -ForegroundColor Cyan
+Write-Host "`nScanning for UE4SS Lua mods..." -ForegroundColor Cyan
 
 $PotentialMods = Get-ChildItem -Path $ScriptDir -Directory
 $ValidModsFound = @()
@@ -128,8 +150,6 @@ if ($ValidModsFound.Count -gt 0) {
         Copy-Item -Path $Mod.FullName -Destination $ModsFolder -Recurse -Force
         $LuaModsInstalled = $true
     }
-} else {
-    Write-Host "No Lua mod folders found next to this script." -ForegroundColor Gray
 }
 
 # --- PAK FILE INSTALLATION ---
@@ -146,22 +166,15 @@ if ($PakFiles.Count -gt 0) {
         Copy-Item -Path $Pak.FullName -Destination $PaksFolder -Force
         $PaksInstalled = $true
     }
-} else {
-    Write-Host "No .pak files found next to this script." -ForegroundColor Gray
 }
 
 # --- FINALIZE ---
-Write-Host "`nSetup complete!" -ForegroundColor Green
+Write-Host "`nSetup complete!" -ForegroundColor Magenta
 
-# Smartly open folders to show the user what happened
-if ($LuaModsInstalled -and (Test-Path $ModsFolder)) { explorer.exe $ModsFolder }
-if ($PaksInstalled -and (Test-Path $PaksFolder)) { explorer.exe $PaksFolder }
-
-# If nothing was found to install, fall back to showing the UE4SS Mods folder
 if (-not $LuaModsInstalled -and -not $PaksInstalled) {
     Write-Host "Opening UE4SS Mods folder so you can add mods manually..." -ForegroundColor Gray
     if (-not (Test-Path $ModsFolder)) { New-Item -Path $ModsFolder -ItemType Directory -Force | Out-Null }
     explorer.exe $ModsFolder
 }
 
-Read-Host "Press Enter to exit"
+Read-Host "`nPress Enter to exit"
