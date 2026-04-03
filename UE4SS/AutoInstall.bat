@@ -15,12 +15,6 @@ if %errorlevel%==0 (
 )
 
 net session >nul 2>&1
-if %errorLevel% NEQ 0 (
-    echo [!] This script may need Admin rights depending on where your game is installed.
-    echo [!] If it fails, close this, right-click the .bat, and 'Run as Administrator'.
-    timeout /t 2 >nul
-)
-
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression (Get-Content '%~f0' -Raw)"
 exit /b
 #>
@@ -29,7 +23,7 @@ exit /b
 # POWERSHELL LOGIC STARTS HERE
 # =====================================================================
 
-Write-Host "`nLocating Half Sword..." -ForegroundColor Cyan
+Write-Host "Locating Half Sword..." -ForegroundColor Cyan
 $GameDir = $null
 $ScriptDir = $env:SCRIPT_DIR
 if (-not $ScriptDir) {
@@ -45,6 +39,25 @@ foreach ($SteamReg in $SteamRegPaths) {
     $GameDir = (Get-ItemProperty -Path $SteamReg -ErrorAction SilentlyContinue).InstallLocation
     if ($GameDir -and (Test-Path $GameDir)) {
         break
+    }
+}
+
+if (-not $GameDir -or -not (Test-Path $GameDir)) {
+    # Fallback for Steam installs where app uninstall keys are missing.
+    $SteamRoots = @(
+        (Get-ItemProperty -Path "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue).SteamPath,
+        (Get-ItemProperty -Path "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam" -ErrorAction SilentlyContinue).InstallPath,
+        (Get-ItemProperty -Path "HKLM:\SOFTWARE\Valve\Steam" -ErrorAction SilentlyContinue).InstallPath,
+        (Join-Path ${env:ProgramFiles(x86)} "Steam"),
+        (Join-Path $env:ProgramFiles "Steam")
+    ) | Where-Object { $_ } | Select-Object -Unique
+
+    foreach ($SteamRoot in $SteamRoots) {
+        $Candidate = Join-Path $SteamRoot "steamapps\common\Half Sword"
+        if (Test-Path $Candidate) {
+            $GameDir = $Candidate
+            break
+        }
     }
 }
 
@@ -78,6 +91,23 @@ if (-not (Test-Path $TargetBinaries)) {
     Write-Error "Invalid path! Path not found: $TargetBinaries"
     Read-Host "Press Enter to exit"
     exit 1
+}
+
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
+$ProtectedRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:windir) | Where-Object { $_ }
+$NeedsAdminHint = $false
+foreach ($Root in $ProtectedRoots) {
+    if ($GameDir.StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $NeedsAdminHint = $true
+        break
+    }
+}
+
+if ($NeedsAdminHint -and -not $IsAdmin) {
+    Write-Host "`n[!] Your game appears to be in a protected Windows folder." -ForegroundColor DarkGray
+    Write-Host "[!] If install steps fail, close this, right-click the .bat, and 'Run as Administrator'." -ForegroundColor DarkGray
 }
 
 # --- UE4SS INSTALLATION LOGIC ---
@@ -172,9 +202,11 @@ if ($PakFiles.Count -gt 0) {
 Write-Host "`nSetup complete!" -ForegroundColor Magenta
 
 if (-not $LuaModsInstalled -and -not $PaksInstalled) {
-    Write-Host "Opening UE4SS Mods folder so you can add mods manually..." -ForegroundColor Gray
+    Write-Host "`nOpening mod folders for manual installation..." -ForegroundColor Gray
     if (-not (Test-Path $ModsFolder)) { New-Item -Path $ModsFolder -ItemType Directory -Force | Out-Null }
+    if (-not (Test-Path $PaksFolder)) { New-Item -Path $PaksFolder -ItemType Directory -Force | Out-Null }
     explorer.exe $ModsFolder
+    explorer.exe $PaksFolder
 }
 
 Read-Host "`nPress Enter to exit"
