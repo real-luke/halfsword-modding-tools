@@ -111,8 +111,32 @@ if ($NeedsAdminHint -and -not $IsAdmin) {
 }
 
 # --- UE4SS INSTALLATION LOGIC ---
+$EnhancerPath = Join-Path $env:APPDATA "Half Sword Enhancer"
+$EnhancerFolderExists = Test-Path $EnhancerPath
+$DwmapiProxyPath = Join-Path $TargetBinaries "dwmapi.dll"
+$HasUe4ssFolder = Test-Path $Ue4ssFolder
+$ManualEnhancerDetected = $EnhancerFolderExists -and (Test-Path $DwmapiProxyPath) -and -not $HasUe4ssFolder
+
 $DoInstall = $true
-if (Test-Path $Ue4ssFolder) {
+$SkipLuaInstall = $false
+$Ue4ssInstalled = $false
+
+if ($ManualEnhancerDetected) {
+    Write-Host "`nHalf Sword Enhancer manual install detected." -ForegroundColor Yellow
+    Write-Host "Skipping UE4SS and Lua mod installation to avoid conflicts." -ForegroundColor Yellow
+    $DoInstall = $false
+    $SkipLuaInstall = $true
+} elseif ($EnhancerFolderExists -and -not $HasUe4ssFolder) {
+    Write-Host "`nHalf Sword Enhancer folder detected." -ForegroundColor Yellow
+    $EnhancerResponse = Read-Host "Install UE4SS anyway? This may conflict with Half Sword Enhancer. (Y/N)"
+    if ($EnhancerResponse -notmatch "^[Yy]$") {
+        Write-Host "Skipping UE4SS and Lua mod installation." -ForegroundColor Yellow
+        $DoInstall = $false
+        $SkipLuaInstall = $true
+    }
+}
+
+if ($DoInstall -and $HasUe4ssFolder) {
     Write-Host "`nExisting ue4ss installation found." -ForegroundColor Yellow
     $Response = Read-Host "Would you like to Reinstall/Update to the latest experimental release? (Y/N)"
     if ($Response -notmatch "^[Yy]$") { $DoInstall = $false }
@@ -150,6 +174,7 @@ if ($DoInstall) {
         Invoke-WebRequest -Uri $Asset.browser_download_url -OutFile $ZipPath
         Expand-Archive -Path $ZipPath -DestinationPath $TargetBinaries -Force
         Remove-Item $ZipPath -ErrorAction SilentlyContinue
+        $Ue4ssInstalled = $true
     } catch {
         Write-Warning "UE4SS download/install failed: $($_.Exception.Message)"
         Write-Warning "Moving to mod installation."
@@ -157,29 +182,33 @@ if ($DoInstall) {
 }
 
 # --- LUA MOD INSTALLATION ---
-Write-Host "`nScanning for UE4SS Lua mods..." -ForegroundColor Cyan
+if (-not $SkipLuaInstall) {
+    Write-Host "`nScanning for UE4SS Lua mods..." -ForegroundColor Cyan
 
-$PotentialMods = Get-ChildItem -Path $ScriptDir -Directory
-$ValidModsFound = @()
+    $PotentialMods = Get-ChildItem -Path $ScriptDir -Directory
+    $ValidModsFound = @()
 
-foreach ($Dir in $PotentialMods) {
-    $HasScripts = Test-Path (Join-Path $Dir.FullName "Scripts")
-    $HasEnabled = Test-Path (Join-Path $Dir.FullName "enabled.txt")
-    
-    if ($HasScripts -or $HasEnabled) {
-        $ValidModsFound += $Dir
+    foreach ($Dir in $PotentialMods) {
+        $HasScripts = Test-Path (Join-Path $Dir.FullName "Scripts")
+        $HasEnabled = Test-Path (Join-Path $Dir.FullName "enabled.txt")
+        
+        if ($HasScripts -or $HasEnabled) {
+            $ValidModsFound += $Dir
+        }
     }
-}
 
-$LuaModsInstalled = $false
-if ($ValidModsFound.Count -gt 0) {
-    if (-not (Test-Path $ModsFolder)) { New-Item -Path $ModsFolder -ItemType Directory -Force | Out-Null }
-    
-    foreach ($Mod in $ValidModsFound) {
-        Write-Host "Installing Lua mod: $($Mod.Name)" -ForegroundColor Green
-        Copy-Item -Path $Mod.FullName -Destination $ModsFolder -Recurse -Force
-        $LuaModsInstalled = $true
+    $LuaModsInstalled = $false
+    if ($ValidModsFound.Count -gt 0) {
+        if (-not (Test-Path $ModsFolder)) { New-Item -Path $ModsFolder -ItemType Directory -Force | Out-Null }
+        
+        foreach ($Mod in $ValidModsFound) {
+            Write-Host "Moving Lua mod: $($Mod.Name)" -ForegroundColor Green
+            Move-Item -Path $Mod.FullName -Destination $ModsFolder -Force
+            $LuaModsInstalled = $true
+        }
     }
+} else {
+    $LuaModsInstalled = $false
 }
 
 # --- PAK FILE INSTALLATION ---
@@ -192,8 +221,8 @@ if ($PakFiles.Count -gt 0) {
     if (-not (Test-Path $PaksFolder)) { New-Item -Path $PaksFolder -ItemType Directory -Force | Out-Null }
     
     foreach ($Pak in $PakFiles) {
-        Write-Host "Installing Pak: $($Pak.Name)" -ForegroundColor Green
-        Copy-Item -Path $Pak.FullName -Destination $PaksFolder -Force
+        Write-Host "Moving Pak: $($Pak.Name)" -ForegroundColor Green
+        Move-Item -Path $Pak.FullName -Destination $PaksFolder -Force
         $PaksInstalled = $true
     }
 }
@@ -201,12 +230,18 @@ if ($PakFiles.Count -gt 0) {
 # --- FINALIZE ---
 Write-Host "`nSetup complete!" -ForegroundColor Magenta
 
-if (-not $LuaModsInstalled -and -not $PaksInstalled) {
-    Write-Host "`nOpening mod folders for manual installation..." -ForegroundColor Gray
-    if (-not (Test-Path $ModsFolder)) { New-Item -Path $ModsFolder -ItemType Directory -Force | Out-Null }
-    if (-not (Test-Path $PaksFolder)) { New-Item -Path $PaksFolder -ItemType Directory -Force | Out-Null }
-    explorer.exe $ModsFolder
-    explorer.exe $PaksFolder
+if (-not $Ue4ssInstalled -and -not $LuaModsInstalled -and -not $PaksInstalled) {
+    if ($SkipLuaInstall) {
+        Write-Host "`nOpening Paks folder for manual installation..." -ForegroundColor Gray
+        if (-not (Test-Path $PaksFolder)) { New-Item -Path $PaksFolder -ItemType Directory -Force | Out-Null }
+        explorer.exe $PaksFolder
+    } else {
+        Write-Host "`nOpening mod folders for manual installation..." -ForegroundColor Gray
+        if (-not (Test-Path $ModsFolder)) { New-Item -Path $ModsFolder -ItemType Directory -Force | Out-Null }
+        if (-not (Test-Path $PaksFolder)) { New-Item -Path $PaksFolder -ItemType Directory -Force | Out-Null }
+        explorer.exe $ModsFolder
+        explorer.exe $PaksFolder
+    }
 }
 
 Read-Host "`nPress Enter to exit"
