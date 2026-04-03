@@ -203,6 +203,10 @@ if (-not $SkipLuaInstall) {
         
         foreach ($Mod in $ValidModsFound) {
             Write-Host "Installing Lua mod: $($Mod.Name)" -ForegroundColor Green
+            $DestinationModPath = Join-Path $ModsFolder $Mod.Name
+            if (Test-Path $DestinationModPath) {
+                Remove-Item -Recurse -Force $DestinationModPath
+            }
             Move-Item -Path $Mod.FullName -Destination $ModsFolder -Force
             $LuaModsInstalled = $true
         }
