@@ -13,7 +13,7 @@ Tools and scripts for modding Half Sword.
 ## Requirements
 
 - [Unreal Engine 5.4](https://www.unrealengine.com/)
-- [repak](https://github.com/trumank/repak)
+- ~~[repak](https://github.com/trumank/repak)~~ (included)
 - [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) (for the CustomMaps mod)
 
 ## Quick Start
