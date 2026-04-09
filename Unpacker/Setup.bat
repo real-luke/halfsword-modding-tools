@@ -8,7 +8,7 @@ set "PAK=pakchunk0-Windows.pak"
 
 REM === Load saved paths ===
 if exist "%CFG%" (
-    for /f "tokens=1,2 delims==" %%A in ("%CFG%") do set "%%A=%%B"
+    for /f "tokens=1* delims==" %%A in ("%CFG%") do set "%%A=%%B"
 )
 
 REM === Find GAME_DIR ===
@@ -25,7 +25,7 @@ if not exist "!GAME_DIR!" (
 
 set "PAKS_DIR=!GAME_DIR!\HalfswordUE5\Content\Paks"
 if not exist "!PAKS_DIR!" (
-    echo [!] Invalid Half Sword folder - Paks directory not found.
+    echo [^!] Invalid Half Sword folder - Paks directory not found.
     pause & exit /b
 )
 
@@ -35,9 +35,54 @@ set /p "SOURCE_DIR=Where to put the unpacked source (leave blank for !SOURCE_DIR
 if "!SOURCE_DIR!"=="" set "SOURCE_DIR=C:\HalfSwordSource"
 set "SOURCE_DIR=!SOURCE_DIR:"=!"
 
+REM Normalize trailing slash and validate user-provided output path
+set "SOURCE_DIR_NORM=!SOURCE_DIR!"
+if "!SOURCE_DIR_NORM:~-1!"=="\" set "SOURCE_DIR_NORM=!SOURCE_DIR_NORM:~0,-1!"
+if "!SOURCE_DIR_NORM!"=="" set "SOURCE_DIR_NORM=C:\HalfSwordSource"
+set "SOURCE_DIR=!SOURCE_DIR_NORM!"
+
+if not "!SOURCE_DIR:~1,2!"==":\" (
+    echo [^!] SOURCE_DIR must be an absolute local path like C:\HalfSwordSource
+    pause & exit /b
+)
+
+echo(!SOURCE_DIR!| findstr /R "[<>|?*]" >nul
+if not errorlevel 1 (
+    echo [^!] SOURCE_DIR contains invalid characters. Do not use ^< ^> ^| ? *
+    pause & exit /b
+)
+
+echo(!SOURCE_DIR:~2!| findstr ":" >nul
+if not errorlevel 1 (
+    echo [^!] SOURCE_DIR is invalid. Use a normal path like C:\HalfSwordSource
+    pause & exit /b
+)
+
+if "!SOURCE_DIR:~3!"=="" (
+    echo [^!] SOURCE_DIR cannot be a drive root. Pick a folder like C:\HalfSwordSource
+    pause & exit /b
+)
+
+set "GAME_DIR_NORM=!GAME_DIR!"
+if "!GAME_DIR_NORM:~-1!"=="\" set "GAME_DIR_NORM=!GAME_DIR_NORM:~0,-1!"
+if /I "!SOURCE_DIR!"=="!GAME_DIR_NORM!" (
+    echo [^!] SOURCE_DIR cannot be the game install folder.
+    pause & exit /b
+)
+
+if not exist "!SOURCE_DIR!" (
+    mkdir "!SOURCE_DIR!" >nul 2>&1
+    if errorlevel 1 (
+        echo [^!] SOURCE_DIR could not be created: !SOURCE_DIR!
+        echo [^!] Choose a writable folder path and run Setup.bat again.
+        pause & exit /b
+    )
+    rmdir /S /Q "!SOURCE_DIR!" >nul 2>&1
+)
+
 if exist "!SOURCE_DIR!" (
     echo.
-    echo [!] !SOURCE_DIR! already exists.
+    echo [^!] !SOURCE_DIR! already exists.
     echo     This could be a partial or outdated unpack. It will be deleted and replaced.
     choice /C YN /M "Delete it and do a fresh unpack"
     if errorlevel 2 (
@@ -78,8 +123,8 @@ if exist "!REPAK_EXE!" (
 ) else (
     where repak >nul 2>&1
     if errorlevel 1 (
-        echo [!] repak.exe not found in !TOOLS_DIR! and not found in PATH.
-        echo [!] Put repak.exe ^(and oo2core_9_win64.dll^) in the Binaries folder next to this script.
+        echo [^!] repak.exe not found in !TOOLS_DIR! and not found in PATH.
+        echo [^!] Put repak.exe ^(and oo2core_9_win64.dll^) in the Binaries folder next to this script.
         pause & exit /b
     )
 )
@@ -87,7 +132,7 @@ if exist "!REPAK_EXE!" (
 if /I "!REPAK_MODE!"=="BUNDLED" (
     echo Using bundled repak.
     if not exist "!OODLE_DLL!" (
-        echo [!] Warning: oo2core_9_win64.dll not found - unpack may fail on Oodle-compressed assets.
+        echo [^!] Warning: oo2core_9_win64.dll not found - unpack may fail on Oodle-compressed assets.
     )
 ) else (
     echo Using repak from PATH ^(no bundled repak found^).
@@ -98,7 +143,7 @@ set "PAK_PATH=!PAKS_DIR!\%PAK%"
 set "REPAK_OUT=!PAKS_DIR!\pakchunk0-Windows"
 
 if not exist "!PAK_PATH!" (
-    echo [!] Could not find !PAK_PATH!
+    echo [^!] Could not find !PAK_PATH!
     pause & exit /b
 )
 
@@ -106,8 +151,8 @@ if exist "!REPAK_OUT!" (
     echo Removing leftover unpack folder from Paks...
     rmdir /S /Q "!REPAK_OUT!"
     if exist "!REPAK_OUT!" (
-        echo [!] Could not delete: !REPAK_OUT!
-        echo [!] Close any Explorer or editor windows that may have it open, then run Setup.bat again.
+        echo [^!] Could not delete: !REPAK_OUT!
+        echo [^!] Close any Explorer or editor windows that may have it open, then run Setup.bat again.
         pause & exit /b
     )
 )
@@ -125,17 +170,17 @@ if /I "!REPAK_MODE!"=="BUNDLED" (
 )
 
 if not "!REPAK_EXIT!"=="0" (
-    echo [!] repak exited with code !REPAK_EXIT! - unpack did not complete.
+    echo [^!] repak exited with code !REPAK_EXIT! - unpack did not complete.
     if exist "!REPAK_OUT!" (
         echo     Cleaning up partial output...
         rmdir /S /Q "!REPAK_OUT!" >nul 2>&1
     )
-    echo [!] If you saw "Oodle initialization failed", make sure oo2core_9_win64.dll is in the Binaries folder.
+    echo [^!] If you saw "Oodle initialization failed", make sure oo2core_9_win64.dll is in the Binaries folder.
     pause & exit /b
 )
 
 if not exist "!REPAK_OUT!" (
-    echo [!] Unpack appeared to succeed but output folder was not found: !REPAK_OUT!
+    echo [^!] Unpack appeared to succeed but output folder was not found: !REPAK_OUT!
     pause & exit /b
 )
 
@@ -144,8 +189,8 @@ if exist "!SOURCE_DIR!" (
     echo Removing existing source directory...
     rmdir /S /Q "!SOURCE_DIR!"
     if exist "!SOURCE_DIR!" (
-        echo [!] Could not delete: !SOURCE_DIR!
-        echo [!] Close any Explorer or editor windows that may have it open, then run Setup.bat again.
+        echo [^!] Could not delete: !SOURCE_DIR!
+        echo [^!] Close any Explorer or editor windows that may have it open, then run Setup.bat again.
         rmdir /S /Q "!REPAK_OUT!" >nul 2>&1
         pause & exit /b
     )
@@ -154,7 +199,7 @@ if exist "!SOURCE_DIR!" (
 echo Moving unpacked files to !SOURCE_DIR!...
 move "!REPAK_OUT!" "!SOURCE_DIR!" >nul
 if not exist "!SOURCE_DIR!" (
-    echo [!] Move failed.
+    echo [^!] Move failed.
     pause & exit /b
 )
 set "UNPACK_DIR=!SOURCE_DIR!"
@@ -170,7 +215,7 @@ if exist "%~dp0HalfswordUE5.uproject" (
     echo Copying pre-configured .uproject...
     copy /Y "%~dp0HalfswordUE5.uproject" "!UNPACK_DIR!\HalfswordUE5\HalfswordUE5.uproject" >nul
 ) else (
-    echo [!] HalfswordUE5.uproject not found next to this script - skipping.
+    echo [^!] HalfswordUE5.uproject not found next to this script - skipping.
 )
 
 REM === Copy Binaries ===
@@ -178,7 +223,7 @@ if exist "%~dp0Binaries" (
     echo Copying Binaries...
     xcopy /E /I /Y "%~dp0Binaries" "!UNPACK_DIR!\HalfswordUE5\Binaries" >nul
 ) else (
-    echo [!] Binaries folder not found next to this script - skipping.
+    echo [^!] Binaries folder not found next to this script - skipping.
 )
 
 REM === Copy Source folder (dummied module) ===
@@ -186,7 +231,7 @@ if exist "%~dp0Source" (
     echo Copying Source folder...
     xcopy /E /I /Y "%~dp0Source" "!UNPACK_DIR!\HalfswordUE5\Source" >nul
 ) else (
-    echo [!] Source folder not found next to this script - skipping.
+    echo [^!] Source folder not found next to this script - skipping.
 )
 
 REM === Copy Suzie plugin ===
@@ -194,7 +239,7 @@ if exist "%~dp0Plugins\Suzie" (
     echo Copying Suzie plugin...
     xcopy /E /I /Y "%~dp0Plugins\Suzie" "!UNPACK_DIR!\HalfswordUE5\Plugins\Suzie" >nul
 ) else (
-    echo [!] Plugins\Suzie not found next to this script - skipping.
+    echo [^!] Plugins\Suzie not found next to this script - skipping.
 )
 
 REM === Copy jmap ===
@@ -203,7 +248,7 @@ if exist "%~dp0Content\DynamicClasses\output.jmap" (
     if not exist "!UNPACK_DIR!\HalfswordUE5\Content\DynamicClasses\" mkdir "!UNPACK_DIR!\HalfswordUE5\Content\DynamicClasses\"
     copy /Y "%~dp0Content\DynamicClasses\output.jmap" "!UNPACK_DIR!\HalfswordUE5\Content\DynamicClasses\output.jmap" >nul
 ) else (
-    echo [!] Content\DynamicClasses\output.jmap not found next to this script - skipping.
+    echo [^!] Content\DynamicClasses\output.jmap not found next to this script - skipping.
 )
 
 REM === Copy cook and package scripts to project ===
