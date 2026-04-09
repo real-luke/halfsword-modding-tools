@@ -31,9 +31,20 @@ if not exist "!PAKS_DIR!" (
 
 REM === Ask where to put the unpacked source ===
 if not defined SOURCE_DIR set "SOURCE_DIR=C:\HalfSwordSource"
-set /p "SOURCE_DIR=Where do you want to put the unpacked source folder (leave blank for !SOURCE_DIR!): "
+set /p "SOURCE_DIR=Where to put the unpacked source (leave blank for !SOURCE_DIR!): "
 if "!SOURCE_DIR!"=="" set "SOURCE_DIR=C:\HalfSwordSource"
 set "SOURCE_DIR=!SOURCE_DIR:"=!"
+
+if exist "!SOURCE_DIR!" (
+    echo.
+    echo [!] !SOURCE_DIR! already exists.
+    echo     This could be a partial or outdated unpack. It will be deleted and replaced.
+    choice /C YN /M "Delete it and do a fresh unpack"
+    if errorlevel 2 (
+        echo Setup cancelled.
+        pause & exit /b
+    )
+)
 
 REM === Save paths ===
 if not exist "!TOOLS_DIR!\" mkdir "!TOOLS_DIR!\"
@@ -68,21 +79,21 @@ if exist "!REPAK_EXE!" (
     where repak >nul 2>&1
     if errorlevel 1 (
         echo [!] repak.exe not found in !TOOLS_DIR! and not found in PATH.
-        echo [!] Put repak.exe next to this script or install repak using the installer.
+        echo [!] Put repak.exe ^(and oo2core_9_win64.dll^) in the Binaries folder next to this script.
         pause & exit /b
     )
 )
 
 if /I "!REPAK_MODE!"=="BUNDLED" (
-    echo Using bundled repak from !TOOLS_DIR!.
+    echo Using bundled repak.
     if not exist "!OODLE_DLL!" (
-        echo [!] Warning: oo2core_9_win64.dll is not in !TOOLS_DIR!; unpack may fail on Oodle-compressed assets.
+        echo [!] Warning: oo2core_9_win64.dll not found - unpack may fail on Oodle-compressed assets.
     )
 ) else (
-    echo Bundled repak unavailable - using repak from PATH.
+    echo Using repak from PATH ^(no bundled repak found^).
 )
 
-REM === Unpack pak ===
+REM === Clean up any leftover repak output folder in Paks ===
 set "PAK_PATH=!PAKS_DIR!\%PAK%"
 set "REPAK_OUT=!PAKS_DIR!\pakchunk0-Windows"
 
@@ -92,16 +103,17 @@ if not exist "!PAK_PATH!" (
 )
 
 if exist "!REPAK_OUT!" (
-    echo Found leftover unpack folder at !REPAK_OUT! - deleting it first...
+    echo Removing leftover unpack folder from Paks...
     rmdir /S /Q "!REPAK_OUT!"
     if exist "!REPAK_OUT!" (
-        echo [!] Could not delete stale folder: !REPAK_OUT!
-        echo [!] Close Explorer/Editor windows using it, then run Setup.bat again.
+        echo [!] Could not delete: !REPAK_OUT!
+        echo [!] Close any Explorer or editor windows that may have it open, then run Setup.bat again.
         pause & exit /b
     )
 )
 
-echo Unpacking %PAK%...
+REM === Unpack pak ===
+echo Unpacking %PAK%... ^(this will take a while^)
 if /I "!REPAK_MODE!"=="BUNDLED" (
     pushd "!TOOLS_DIR!"
     "!REPAK_CMD!" --aes-key %AES_KEY% unpack "!PAK_PATH!"
@@ -113,22 +125,33 @@ if /I "!REPAK_MODE!"=="BUNDLED" (
 )
 
 if not "!REPAK_EXIT!"=="0" (
-    echo [!] repak reported an error and unpack did not complete.
-    echo [!] If you saw "Oodle initialization failed previously", verify game files and make sure the bundled repak build is up to date.
+    echo [!] repak exited with code !REPAK_EXIT! - unpack did not complete.
+    if exist "!REPAK_OUT!" (
+        echo     Cleaning up partial output...
+        rmdir /S /Q "!REPAK_OUT!" >nul 2>&1
+    )
+    echo [!] If you saw "Oodle initialization failed", make sure oo2core_9_win64.dll is in the Binaries folder.
     pause & exit /b
 )
 
 if not exist "!REPAK_OUT!" (
-    echo [!] Unpack failed or output folder not found: !REPAK_OUT!
+    echo [!] Unpack appeared to succeed but output folder was not found: !REPAK_OUT!
     pause & exit /b
 )
 
 REM === Move to SOURCE_DIR ===
 if exist "!SOURCE_DIR!" (
-    echo [!] !SOURCE_DIR! already exists - delete it first if you want a fresh unpack.
-    pause & exit /b
+    echo Removing existing source directory...
+    rmdir /S /Q "!SOURCE_DIR!"
+    if exist "!SOURCE_DIR!" (
+        echo [!] Could not delete: !SOURCE_DIR!
+        echo [!] Close any Explorer or editor windows that may have it open, then run Setup.bat again.
+        rmdir /S /Q "!REPAK_OUT!" >nul 2>&1
+        pause & exit /b
+    )
 )
-echo Moving to !SOURCE_DIR!...
+
+echo Moving unpacked files to !SOURCE_DIR!...
 move "!REPAK_OUT!" "!SOURCE_DIR!" >nul
 if not exist "!SOURCE_DIR!" (
     echo [!] Move failed.
@@ -189,7 +212,7 @@ for %%F in (Cook.bat YourPakName.bat) do (
         echo Copying %%F to project...
         copy /Y "%~dp0..\Scripts\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
     ) else if exist "%~dp0..\Batch\%%F" (
-        echo Copying %%F from legacy Batch folder...
+        echo Copying %%F to project...
         copy /Y "%~dp0..\Batch\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
     )
 )
@@ -201,16 +224,15 @@ if exist "!HAIR_DIR!" (
     del /Q "!HAIR_DIR!\Hair_M_SideSweptFringe.*" >nul 2>&1
 )
 
-REM === Write DirectoriesToNeverCook to DefaultGame.ini ===
+REM === Write DefaultGame.ini ===
 set "CONTENT_DIR=!UNPACK_DIR!\HalfswordUE5\Content"
 set "CONFIG_DIR=!UNPACK_DIR!\HalfswordUE5\Config"
 set "DEFAULTGAME=!CONFIG_DIR!\DefaultGame.ini"
 
 if not exist "!CONFIG_DIR!" mkdir "!CONFIG_DIR!"
 
-echo Writing DirectoriesToNeverCook to DefaultGame.ini...
+echo Writing DefaultGame.ini...
 
-REM Strip any existing ProjectPackagingSettings section to avoid duplicates on re-run
 if exist "!DEFAULTGAME!" (
     set "IN_SECTION=0"
     > "!DEFAULTGAME!.tmp" (
@@ -224,7 +246,6 @@ if exist "!DEFAULTGAME!" (
     move /Y "!DEFAULTGAME!.tmp" "!DEFAULTGAME!" >nul
 )
 
-REM Append fresh section with all top-level Content folders
 (
     echo.
     echo [/Script/UnrealEd.ProjectPackagingSettings]
@@ -234,9 +255,7 @@ REM Append fresh section with all top-level Content folders
 
 REM === Write DefaultEngine.ini ===
 set "DEFAULTENGINE=!CONFIG_DIR!\DefaultEngine.ini"
-echo Writing DefaultEngine.ini settings...
 
-REM Strip existing sections we're about to write to avoid duplicates
 if exist "!DEFAULTENGINE!" (
     set "IN_SECTION=0"
     > "!DEFAULTENGINE!.tmp" (
@@ -261,11 +280,8 @@ if exist "!DEFAULTENGINE!" (
     echo CanUseUnversionedPropertySerialization=True
 ) >> "!DEFAULTENGINE!"
 
-REM === Write DefaultEditor.ini ===
 set "DEFAULTEDITOR=!CONFIG_DIR!\DefaultEditor.ini"
-echo Writing DefaultEditor.ini settings...
 
-REM Strip existing CookSettings section to avoid duplicates
 if exist "!DEFAULTEDITOR!" (
     set "IN_SECTION=0"
     > "!DEFAULTEDITOR!.tmp" (

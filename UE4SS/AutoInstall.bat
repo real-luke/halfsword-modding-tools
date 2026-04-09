@@ -2,9 +2,14 @@
 @echo off
 set "SCRIPT_DIR=%~dp0"
 set "UE4SS_FORCE_DEV=0"
+set "UE4SS_USE_DEMO=0"
 
-if /i "%~1"=="-dev" set "UE4SS_FORCE_DEV=1"
-if /i "%~1"=="--dev" set "UE4SS_FORCE_DEV=1"
+for %%A in (%*) do (
+    if /i "%%~A"=="-dev" set "UE4SS_FORCE_DEV=1"
+    if /i "%%~A"=="--dev" set "UE4SS_FORCE_DEV=1"
+    if /i "%%~A"=="-demo" set "UE4SS_USE_DEMO=1"
+    if /i "%%~A"=="--demo" set "UE4SS_USE_DEMO=1"
+)
 
 echo %~dp0 | findstr /i "Temp" >nul
 if %errorlevel%==0 (
@@ -23,7 +28,20 @@ exit /b
 # POWERSHELL LOGIC STARTS HERE
 # =====================================================================
 
-Write-Host "Locating Half Sword..." -ForegroundColor Cyan
+${IsDemoInstall} = ($env:UE4SS_USE_DEMO -eq "1")
+if ($IsDemoInstall) {
+    $GameDisplayName = "Half Sword Demo"
+    $GameFolderName = "Half Sword Demo"
+    $GameSubfolderName = "HalfSwordUE5"
+    $SteamAppId = "2642680"
+} else {
+    $GameDisplayName = "Half Sword"
+    $GameFolderName = "Half Sword"
+    $GameSubfolderName = "HalfswordUE5"
+    $SteamAppId = "2397300"
+}
+
+Write-Host "Locating $GameDisplayName..." -ForegroundColor Cyan
 $GameDir = $null
 $ScriptDir = $env:SCRIPT_DIR
 if (-not $ScriptDir) {
@@ -31,8 +49,8 @@ if (-not $ScriptDir) {
 }
 
 $SteamRegPaths = @(
-    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 2397300",
-    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 2397300"
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App $SteamAppId",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Steam App $SteamAppId"
 )
 
 foreach ($SteamReg in $SteamRegPaths) {
@@ -53,7 +71,7 @@ if (-not $GameDir -or -not (Test-Path $GameDir)) {
     ) | Where-Object { $_ } | Select-Object -Unique
 
     foreach ($SteamRoot in $SteamRoots) {
-        $Candidate = Join-Path $SteamRoot "steamapps\common\Half Sword"
+        $Candidate = Join-Path $SteamRoot "steamapps\common\$GameFolderName"
         if (Test-Path $Candidate) {
             $GameDir = $Candidate
             break
@@ -67,7 +85,7 @@ if (-not $GameDir -or -not (Test-Path $GameDir)) {
         $Manifests = Get-ChildItem $EpicManifestPath -Filter "*.item"
         foreach ($File in $Manifests) {
             $Content = Get-Content $File.FullName | ConvertFrom-Json -ErrorAction SilentlyContinue
-            if ($Content.DisplayName -like "*Half Sword*") {
+            if ($Content.DisplayName -like "*$GameDisplayName*") {
                 $GameDir = $Content.InstallLocation
                 break
             }
@@ -77,15 +95,15 @@ if (-not $GameDir -or -not (Test-Path $GameDir)) {
 
 if (-not $GameDir -or -not (Test-Path $GameDir)) {
     Write-Host "Could not find game automatically." -ForegroundColor Yellow
-    $RawPath = Read-Host "Please paste your 'Half Sword' folder path"
+    $RawPath = Read-Host "Please paste your '$GameDisplayName' folder path"
     $GameDir = $RawPath.Trim('"')
 }
 
 # --- DIRECTORY SETUP ---
-$TargetBinaries = Join-Path $GameDir "HalfswordUE5\Binaries\Win64"
+$TargetBinaries = Join-Path $GameDir "$GameSubfolderName\Binaries\Win64"
 $Ue4ssFolder = Join-Path $TargetBinaries "ue4ss"
 $ModsFolder = Join-Path $Ue4ssFolder "Mods"
-$PaksFolder = Join-Path $GameDir "HalfswordUE5\Content\Paks"
+$PaksFolder = Join-Path $GameDir "$GameSubfolderName\Content\Paks"
 
 if (-not (Test-Path $TargetBinaries)) {
     Write-Error "Invalid path! Path not found: $TargetBinaries"
@@ -207,7 +225,7 @@ if (-not $SkipLuaInstall) {
             if (Test-Path $DestinationModPath) {
                 Remove-Item -Recurse -Force $DestinationModPath
             }
-            Move-Item -Path $Mod.FullName -Destination $ModsFolder -Force
+            Copy-Item -Path $Mod.FullName -Destination $DestinationModPath -Recurse -Force
             $LuaModsInstalled = $true
         }
     }
