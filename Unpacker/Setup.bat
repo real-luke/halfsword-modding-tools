@@ -1,354 +1,345 @@
+<# :
 @echo off
-setlocal enabledelayedexpansion
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:SCRIPT_FILE='%~f0'; Invoke-Expression (Get-Content '%~f0' -Raw)"
+exit /b
+#>
 
-set "TOOLS_DIR=%LOCALAPPDATA%\HalfSwordModTools"
-set "CFG=!TOOLS_DIR!\paths.ini"
-set "AES_KEY=0xBCBF7B45A4A8150D06F7B955BC25EF5CE603470F508302CAD0EB48FEA2D91517"
-set "PAK=pakchunk0-Windows.pak"
+# =====================================================================
+# POWERSHELL LOGIC STARTS HERE
+# =====================================================================
 
-REM === Load saved paths ===
-if exist "%CFG%" (
-    for /f "tokens=1* delims==" %%A in ("%CFG%") do set "%%A=%%B"
-)
+$ScriptDir = Split-Path -Parent $env:SCRIPT_FILE
+$ToolsDir = Join-Path $env:LOCALAPPDATA "HalfSwordModTools"
+$CfgPath = Join-Path $ToolsDir "paths.ini"
+$AesKey = "0xBCBF7B45A4A8150D06F7B955BC25EF5CE603470F508302CAD0EB48FEA2D91517"
+$PakName = "pakchunk0-Windows.pak"
 
-REM === Find GAME_DIR ===
-if not exist "!GAME_DIR!" (
-    for /f "tokens=2*" %%A in ('reg query "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 2397300" /v "InstallLocation" 2^>nul') do (
-        set "GAME_DIR=%%B"
-    )
-)
+# Load saved paths
+$Config = @{}
+if (Test-Path $CfgPath) {
+    Get-Content $CfgPath | ForEach-Object {
+        if ($_ -match "^([^=]+)=(.*)$") {
+            $Config[$matches[1]] = $matches[2]
+        }
+    }
+}
 
-if not exist "!GAME_DIR!" (
-    set /p GAME_DIR="Paste 'Half Sword' folder (e.g., C:\Steam\steamapps\common\Half Sword): "
-    set "GAME_DIR=!GAME_DIR:"=!"
-)
+$GameDir = $Config["GAME_DIR"]
+if (-not $GameDir -or -not (Test-Path $GameDir)) {
+    $RegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 2397300"
+    $GameDir = (Get-ItemProperty -Path $RegPath -ErrorAction SilentlyContinue).InstallLocation
+}
 
-set "PAKS_DIR=!GAME_DIR!\HalfswordUE5\Content\Paks"
-if not exist "!PAKS_DIR!" (
-    echo [^!] Invalid Half Sword folder - Paks directory not found.
-    pause & exit /b
-)
+if (-not $GameDir -or -not (Test-Path $GameDir)) {
+    $GameDir = Read-Host "Paste 'Half Sword' folder (e.g., C:\Steam\steamapps\common\Half Sword)"
+    if ($GameDir) { $GameDir = $GameDir.Trim('"') }
+}
 
-REM === Ask where to put the unpacked source ===
-if not defined SOURCE_DIR set "SOURCE_DIR=C:\HalfSwordSource"
-set /p "SOURCE_DIR=Where to put the unpacked source (leave blank for !SOURCE_DIR!): "
-if "!SOURCE_DIR!"=="" set "SOURCE_DIR=C:\HalfSwordSource"
-set "SOURCE_DIR=!SOURCE_DIR:"=!"
+$PaksDir = Join-Path $GameDir "HalfswordUE5\Content\Paks"
+if (-not (Test-Path $PaksDir)) {
+    Write-Host "[!] Invalid Half Sword folder - Paks directory not found." -ForegroundColor Red
+    Write-Host "Press Enter to exit..."
+    Read-Host
+    exit 1
+}
 
-REM Normalize trailing slash and validate user-provided output path
-set "SOURCE_DIR_NORM=!SOURCE_DIR!"
-if "!SOURCE_DIR_NORM:~-1!"=="\" set "SOURCE_DIR_NORM=!SOURCE_DIR_NORM:~0,-1!"
-if "!SOURCE_DIR_NORM!"=="" set "SOURCE_DIR_NORM=C:\HalfSwordSource"
-set "SOURCE_DIR=!SOURCE_DIR_NORM!"
+$SourceDir = $Config["SOURCE_DIR"]
+if (-not $SourceDir) { $SourceDir = "C:\HalfSwordSource" }
 
-if not "!SOURCE_DIR:~1,2!"==":\" (
-    echo [^!] SOURCE_DIR must be an absolute local path like C:\HalfSwordSource
-    pause & exit /b
-)
+$PromptSource = Read-Host "Where would you like to put the unpacked source (leave blank for $SourceDir)"
+if ($PromptSource -and $PromptSource.Trim() -ne "") {
+    $SourceDir = $PromptSource.Trim('"')
+}
 
-echo(!SOURCE_DIR!| findstr /R "[<>|?*]" >nul
-if not errorlevel 1 (
-    echo [^!] SOURCE_DIR contains invalid characters. Do not use ^< ^> ^| ? *
-    pause & exit /b
-)
+if (-not ($SourceDir -match "^[A-Za-z]:\\[^<>|?*]+$") -or $SourceDir.Length -le 3) {
+    Write-Host "[!] SOURCE_DIR must be an absolute valid folder path like C:\HalfSwordSource" -ForegroundColor Red
+    Write-Host "Press Enter to exit..."
+    Read-Host
+    exit 1
+}
 
-echo(!SOURCE_DIR:~2!| findstr ":" >nul
-if not errorlevel 1 (
-    echo [^!] SOURCE_DIR is invalid. Use a normal path like C:\HalfSwordSource
-    pause & exit /b
-)
+if ($SourceDir.TrimEnd('\') -eq $GameDir.TrimEnd('\')) {
+    Write-Host "[!] SOURCE_DIR cannot be the game install folder." -ForegroundColor Red
+    Write-Host "Press Enter to exit..."
+    Read-Host
+    exit 1
+}
 
-if "!SOURCE_DIR:~3!"=="" (
-    echo [^!] SOURCE_DIR cannot be a drive root. Pick a folder like C:\HalfSwordSource
-    pause & exit /b
-)
+if (-not (Test-Path $SourceDir)) {
+    try {
+        New-Item -ItemType Directory -Path $SourceDir -Force -ErrorAction Stop | Out-Null
+        Remove-Item -Recurse -Force $SourceDir | Out-Null
+    } catch {
+        Write-Host "[!] SOURCE_DIR could not be created: $SourceDir" -ForegroundColor Red
+        Write-Host "[!] Choose a writable folder path and run Setup.bat again." -ForegroundColor Yellow
+        Write-Host "Press Enter to exit..."
+        Read-Host
+        exit 1
+    }
+}
 
-set "GAME_DIR_NORM=!GAME_DIR!"
-if "!GAME_DIR_NORM:~-1!"=="\" set "GAME_DIR_NORM=!GAME_DIR_NORM:~0,-1!"
-if /I "!SOURCE_DIR!"=="!GAME_DIR_NORM!" (
-    echo [^!] SOURCE_DIR cannot be the game install folder.
-    pause & exit /b
-)
+if (Test-Path $SourceDir) {
+    Write-Host "`n[!] $SourceDir already exists." -ForegroundColor Yellow
+    Write-Host "    This could be a partial or outdated unpack. It will be deleted and replaced." -ForegroundColor Gray
+    $Choice = Read-Host "Delete it and do a fresh unpack? (Y/N)"
+    if ($Choice -notmatch "^[Yy]$") {
+        Write-Host "Setup cancelled." -ForegroundColor Yellow
+        Write-Host "Press Enter to exit..."
+        Read-Host
+        exit 1
+    }
+}
 
-if not exist "!SOURCE_DIR!" (
-    mkdir "!SOURCE_DIR!" >nul 2>&1
-    if errorlevel 1 (
-        echo [^!] SOURCE_DIR could not be created: !SOURCE_DIR!
-        echo [^!] Choose a writable folder path and run Setup.bat again.
-        pause & exit /b
-    )
-    rmdir /S /Q "!SOURCE_DIR!" >nul 2>&1
-)
+if (-not (Test-Path $ToolsDir)) { New-Item -ItemType Directory -Path $ToolsDir -Force | Out-Null }
+$Config["GAME_DIR"] = $GameDir
+$Config["SOURCE_DIR"] = $SourceDir
+$CfgContent = @()
+$Config.GetEnumerator() | Sort-Object Name | ForEach-Object {
+    if ($_.Value) { $CfgContent += "$($_.Name)=$($_.Value)" }
+}
+$CfgContent | Set-Content $CfgPath
 
-if exist "!SOURCE_DIR!" (
-    echo.
-    echo [^!] !SOURCE_DIR! already exists.
-    echo     This could be a partial or outdated unpack. It will be deleted and replaced.
-    choice /C YN /M "Delete it and do a fresh unpack"
-    if errorlevel 2 (
-        echo Setup cancelled.
-        pause & exit /b
-    )
-)
+$RepakExe = Join-Path $ToolsDir "repak.exe"
+$OodleDll = Join-Path $ToolsDir "oo2core_9_win64.dll"
 
-REM === Save paths ===
-if not exist "!TOOLS_DIR!\" mkdir "!TOOLS_DIR!\"
-(
-    if defined ENGINE_DIR echo ENGINE_DIR=!ENGINE_DIR!
-    echo GAME_DIR=!GAME_DIR!
-    echo SOURCE_DIR=!SOURCE_DIR!
-) > "%CFG%"
+$LocalRepak = Join-Path $ScriptDir "..\Binaries\repak.exe"
+if (-not (Test-Path $LocalRepak)) { $LocalRepak = Join-Path $ScriptDir "repak.exe" }
+if (Test-Path $LocalRepak) { Copy-Item -Path (Resolve-Path $LocalRepak).Path -Destination $RepakExe -Force }
 
-REM === Prepare repak ===
-set "REPAK_EXE=!TOOLS_DIR!\repak.exe"
-set "OODLE_DLL=!TOOLS_DIR!\oo2core_9_win64.dll"
-set "REPAK_CMD=repak"
-set "REPAK_MODE=PATH"
+$LocalOodle = Join-Path $ScriptDir "..\Binaries\oo2core_9_win64.dll"
+if (-not (Test-Path $LocalOodle)) { $LocalOodle = Join-Path $ScriptDir "oo2core_9_win64.dll" }
+if (Test-Path $LocalOodle) { Copy-Item -Path (Resolve-Path $LocalOodle).Path -Destination $OodleDll -Force }
 
-if exist "%~dp0..\Binaries\repak.exe" (
-    copy /Y "%~dp0..\Binaries\repak.exe" "!REPAK_EXE!" >nul
-) else if exist "%~dp0repak.exe" (
-    copy /Y "%~dp0repak.exe" "!REPAK_EXE!" >nul
-)
+$RepakCmd = "repak"
+$RepakMode = "PATH"
 
-if exist "%~dp0..\Binaries\oo2core_9_win64.dll" (
-    copy /Y "%~dp0..\Binaries\oo2core_9_win64.dll" "!OODLE_DLL!" >nul
-) else if exist "%~dp0oo2core_9_win64.dll" (
-    copy /Y "%~dp0oo2core_9_win64.dll" "!OODLE_DLL!" >nul
-)
+if (Test-Path $RepakExe) {
+    $RepakCmd = $RepakExe
+    $RepakMode = "BUNDLED"
+} else {
+    if (-not (Get-Command "repak" -ErrorAction SilentlyContinue)) {
+        Write-Host "[!] repak.exe not found in $ToolsDir and not found in PATH." -ForegroundColor Red
+        Write-Host "[!] Put repak.exe (and oo2core_9_win64.dll) in the Binaries folder next to this script." -ForegroundColor Yellow
+        Write-Host "Press Enter to exit..."
+        Read-Host
+        exit 1
+    }
+}
 
-if exist "!REPAK_EXE!" (
-    set "REPAK_CMD=!REPAK_EXE!"
-    set "REPAK_MODE=BUNDLED"
-) else (
-    where repak >nul 2>&1
-    if errorlevel 1 (
-        echo [^!] repak.exe not found in !TOOLS_DIR! and not found in PATH.
-        echo [^!] Put repak.exe ^(and oo2core_9_win64.dll^) in the Binaries folder next to this script.
-        pause & exit /b
-    )
-)
+if ($RepakMode -eq "BUNDLED") {
+    Write-Host "Using bundled repak." -ForegroundColor Cyan
+    if (-not (Test-Path $OodleDll)) {
+        Write-Host "[!] Warning: oo2core_9_win64.dll not found - unpack may fail on Oodle-compressed assets." -ForegroundColor DarkYellow
+    }
+} else {
+    Write-Host "Using repak from PATH (no bundled repak found)." -ForegroundColor Yellow
+}
 
-if /I "!REPAK_MODE!"=="BUNDLED" (
-    echo Using bundled repak.
-    if not exist "!OODLE_DLL!" (
-        echo [^!] Warning: oo2core_9_win64.dll not found - unpack may fail on Oodle-compressed assets.
-    )
-) else (
-    echo Using repak from PATH ^(no bundled repak found^).
-)
+$PakPath = Join-Path $PaksDir $PakName
+$RepakOut = Join-Path $PaksDir "pakchunk0-Windows"
 
-REM === Clean up any leftover repak output folder in Paks ===
-set "PAK_PATH=!PAKS_DIR!\%PAK%"
-set "REPAK_OUT=!PAKS_DIR!\pakchunk0-Windows"
+if (-not (Test-Path $PakPath)) {
+    Write-Host "[!] Could not find $PakPath" -ForegroundColor Red
+    Write-Host "Press Enter to exit..."
+    Read-Host
+    exit 1
+}
 
-if not exist "!PAK_PATH!" (
-    echo [^!] Could not find !PAK_PATH!
-    pause & exit /b
-)
+if (Test-Path $RepakOut) {
+    Write-Host "Removing leftover unpack folder from Paks..." -ForegroundColor Gray
+    Remove-Item -Recurse -Force $RepakOut -ErrorAction SilentlyContinue
+    if (Test-Path $RepakOut) {
+        Write-Host "[!] Could not delete: $RepakOut" -ForegroundColor Red
+        Write-Host "[!] Close any Explorer or editor windows that may have it open, then run Setup.bat again." -ForegroundColor Yellow
+        Write-Host "Press Enter to exit..."
+        Read-Host
+        exit 1
+    }
+}
 
-if exist "!REPAK_OUT!" (
-    echo Removing leftover unpack folder from Paks...
-    rmdir /S /Q "!REPAK_OUT!"
-    if exist "!REPAK_OUT!" (
-        echo [^!] Could not delete: !REPAK_OUT!
-        echo [^!] Close any Explorer or editor windows that may have it open, then run Setup.bat again.
-        pause & exit /b
-    )
-)
+Write-Host "Unpacking $PakName..." -ForegroundColor Cyan
+$RepakExit = 0
+if ($RepakMode -eq "BUNDLED") {
+    Push-Location $ToolsDir
+    & $RepakCmd --aes-key $AesKey unpack $PakPath
+    $RepakExit = $LASTEXITCODE
+    Pop-Location
+} else {
+    & $RepakCmd --aes-key $AesKey unpack $PakPath
+    $RepakExit = $LASTEXITCODE
+}
 
-REM === Unpack pak ===
-echo Unpacking %PAK%... ^(this will take a while^)
-if /I "!REPAK_MODE!"=="BUNDLED" (
-    pushd "!TOOLS_DIR!"
-    "!REPAK_CMD!" --aes-key %AES_KEY% unpack "!PAK_PATH!"
-    set "REPAK_EXIT=!ERRORLEVEL!"
-    popd
-) else (
-    "!REPAK_CMD!" --aes-key %AES_KEY% unpack "!PAK_PATH!"
-    set "REPAK_EXIT=!ERRORLEVEL!"
-)
+if ($RepakExit -ne 0) {
+    Write-Host "[!] repak exited with code $RepakExit - unpack did not complete." -ForegroundColor Red
+    if (Test-Path $RepakOut) {
+        Write-Host "    Cleaning up partial output..." -ForegroundColor Gray
+        Remove-Item -Recurse -Force $RepakOut -ErrorAction SilentlyContinue
+    }
+    Write-Host "[!] If you saw `"Oodle initialization failed`", make sure oo2core_9_win64.dll is in the Binaries folder." -ForegroundColor Yellow
+    Write-Host "Press Enter to exit..."
+    Read-Host
+    exit 1
+}
 
-if not "!REPAK_EXIT!"=="0" (
-    echo [^!] repak exited with code !REPAK_EXIT! - unpack did not complete.
-    if exist "!REPAK_OUT!" (
-        echo     Cleaning up partial output...
-        rmdir /S /Q "!REPAK_OUT!" >nul 2>&1
-    )
-    echo [^!] If you saw "Oodle initialization failed", make sure oo2core_9_win64.dll is in the Binaries folder.
-    pause & exit /b
-)
+if (-not (Test-Path $RepakOut)) {
+    Write-Host "[!] Unpack appeared to succeed but output folder was not found: $RepakOut" -ForegroundColor Red
+    Write-Host "Press Enter to exit..."
+    Read-Host
+    exit 1
+}
 
-if not exist "!REPAK_OUT!" (
-    echo [^!] Unpack appeared to succeed but output folder was not found: !REPAK_OUT!
-    pause & exit /b
-)
+if (Test-Path $SourceDir) {
+    Write-Host "Removing existing source directory..." -ForegroundColor Gray
+    Remove-Item -Recurse -Force $SourceDir -ErrorAction SilentlyContinue
+    if (Test-Path $SourceDir) {
+        Write-Host "[!] Could not delete: $SourceDir" -ForegroundColor Red
+        Write-Host "[!] Close any Explorer or editor windows that may have it open, then run Setup.bat again." -ForegroundColor Yellow
+        Remove-Item -Recurse -Force $RepakOut -ErrorAction SilentlyContinue
+        Write-Host "Press Enter to exit..."
+        Read-Host
+        exit 1
+    }
+}
 
-REM === Move to SOURCE_DIR ===
-if exist "!SOURCE_DIR!" (
-    echo Removing existing source directory...
-    rmdir /S /Q "!SOURCE_DIR!"
-    if exist "!SOURCE_DIR!" (
-        echo [^!] Could not delete: !SOURCE_DIR!
-        echo [^!] Close any Explorer or editor windows that may have it open, then run Setup.bat again.
-        rmdir /S /Q "!REPAK_OUT!" >nul 2>&1
-        pause & exit /b
-    )
-)
+Write-Host "Moving unpacked files to $SourceDir..." -ForegroundColor Cyan
+Move-Item -Path $RepakOut -Destination $SourceDir -Force
 
-echo Moving unpacked files to !SOURCE_DIR!...
-move "!REPAK_OUT!" "!SOURCE_DIR!" >nul
-if not exist "!SOURCE_DIR!" (
-    echo [^!] Move failed.
-    pause & exit /b
-)
-set "UNPACK_DIR=!SOURCE_DIR!"
+if (-not (Test-Path $SourceDir)) {
+    Write-Host "[!] Move failed." -ForegroundColor Red
+    Write-Host "Press Enter to exit..."
+    Read-Host
+    exit 1
+}
 
-REM === Remove Engine folder (not needed for modding) ===
-if exist "!UNPACK_DIR!\Engine" (
-    echo Removing Engine folder...
-    rmdir /S /Q "!UNPACK_DIR!\Engine"
-)
+$UnpackDir = $SourceDir
+$UnpackEngineDir = Join-Path $UnpackDir "Engine"
+if (Test-Path $UnpackEngineDir) {
+    Write-Host "Removing Engine folder..." -ForegroundColor Gray
+    Remove-Item -Recurse -Force $UnpackEngineDir -ErrorAction SilentlyContinue
+}
 
-REM === Overwrite .uproject with pre-configured version ===
-if exist "%~dp0HalfswordUE5.uproject" (
-    echo Copying pre-configured .uproject...
-    copy /Y "%~dp0HalfswordUE5.uproject" "!UNPACK_DIR!\HalfswordUE5\HalfswordUE5.uproject" >nul
-) else (
-    echo [^!] HalfswordUE5.uproject not found next to this script - skipping.
-)
+$UprojectSrc = Join-Path $ScriptDir "HalfswordUE5.uproject"
+$UprojectDest = Join-Path $UnpackDir "HalfswordUE5\HalfswordUE5.uproject"
+if (Test-Path $UprojectSrc) {
+    Write-Host "Copying pre-configured .uproject..." -ForegroundColor Cyan
+    Copy-Item -Path $UprojectSrc -Destination $UprojectDest -Force
+}
 
-REM === Copy Binaries ===
-if exist "%~dp0Binaries" (
-    echo Copying Binaries...
-    xcopy /E /I /Y "%~dp0Binaries" "!UNPACK_DIR!\HalfswordUE5\Binaries" >nul
-) else (
-    echo [^!] Binaries folder not found next to this script - skipping.
-)
+$BinariesSrc = Join-Path $ScriptDir "Binaries"
+$BinariesDest = Join-Path $UnpackDir "HalfswordUE5\Binaries"
+if (Test-Path $BinariesSrc) {
+    Write-Host "Copying Binaries..." -ForegroundColor Cyan
+    Copy-Item -Path $BinariesSrc -Destination $BinariesDest -Recurse -Force
+}
 
-REM === Copy Source folder (dummied module) ===
-if exist "%~dp0Source" (
-    echo Copying Source folder...
-    xcopy /E /I /Y "%~dp0Source" "!UNPACK_DIR!\HalfswordUE5\Source" >nul
-) else (
-    echo [^!] Source folder not found next to this script - skipping.
-)
+$SourceCodeSrc = Join-Path $ScriptDir "Source"
+$SourceCodeDest = Join-Path $UnpackDir "HalfswordUE5\Source"
+if (Test-Path $SourceCodeSrc) {
+    Write-Host "Copying Source folder..." -ForegroundColor Cyan
+    Copy-Item -Path $SourceCodeSrc -Destination $SourceCodeDest -Recurse -Force
+}
 
-REM === Copy Suzie plugin ===
-if exist "%~dp0Plugins\Suzie" (
-    echo Copying Suzie plugin...
-    xcopy /E /I /Y "%~dp0Plugins\Suzie" "!UNPACK_DIR!\HalfswordUE5\Plugins\Suzie" >nul
-) else (
-    echo [^!] Plugins\Suzie not found next to this script - skipping.
-)
+$SuzieSrc = Join-Path $ScriptDir "Plugins\Suzie"
+$SuzieDest = Join-Path $UnpackDir "HalfswordUE5\Plugins\Suzie"
+if (Test-Path $SuzieSrc) {
+    Write-Host "Copying Suzie plugin..." -ForegroundColor Cyan
+    New-Item -ItemType Directory -Path (Split-Path $SuzieDest -Parent) -Force | Out-Null
+    Copy-Item -Path $SuzieSrc -Destination $SuzieDest -Recurse -Force
+}
 
-REM === Copy jmap ===
-if exist "%~dp0Content\DynamicClasses\output.jmap" (
-    echo Copying output.jmap...
-    if not exist "!UNPACK_DIR!\HalfswordUE5\Content\DynamicClasses\" mkdir "!UNPACK_DIR!\HalfswordUE5\Content\DynamicClasses\"
-    copy /Y "%~dp0Content\DynamicClasses\output.jmap" "!UNPACK_DIR!\HalfswordUE5\Content\DynamicClasses\output.jmap" >nul
-) else (
-    echo [^!] Content\DynamicClasses\output.jmap not found next to this script - skipping.
-)
+$JmapSrc = Join-Path $ScriptDir "Content\DynamicClasses\output.jmap"
+$JmapDestDir = Join-Path $UnpackDir "HalfswordUE5\Content\DynamicClasses"
+if (Test-Path $JmapSrc) {
+    Write-Host "Copying output.jmap..." -ForegroundColor Cyan
+    if (-not (Test-Path $JmapDestDir)) { New-Item -ItemType Directory -Path $JmapDestDir -Force | Out-Null }
+    Copy-Item -Path $JmapSrc -Destination (Join-Path $JmapDestDir "output.jmap") -Force
+}
 
-REM === Copy cook and package scripts to project ===
-for %%F in (Cook.bat YourPakName.bat) do (
-    if exist "%~dp0..\Scripts\%%F" (
-        echo Copying %%F to project...
-        copy /Y "%~dp0..\Scripts\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
-    ) else if exist "%~dp0..\Batch\%%F" (
-        echo Copying %%F to project...
-        copy /Y "%~dp0..\Batch\%%F" "!UNPACK_DIR!\HalfswordUE5\%%F" >nul
-    )
-)
+$BatScripts = @("Cook.bat", "YourPakName.bat")
+foreach ($Bat in $BatScripts) {
+    $TargetBatDest = Join-Path $UnpackDir ("HalfswordUE5\" + $Bat)
+    $BatSrcScript = Join-Path $ScriptDir ("..\Scripts\" + $Bat)
+    if (-not (Test-Path $BatSrcScript)) { $BatSrcScript = Join-Path $ScriptDir ("..\Batch\" + $Bat) }
+    
+    if (Test-Path $BatSrcScript) {
+        Write-Host "Copying $Bat to project..." -ForegroundColor Cyan
+        Copy-Item -Path (Resolve-Path $BatSrcScript).Path -Destination $TargetBatDest -Force
+    }
+}
 
-REM === Delete crash-causing MetaHuman hair files ===
-set "HAIR_DIR=!UNPACK_DIR!\HalfswordUE5\Content\MetaHumans\Taro\MaleHair\Hair"
-if exist "!HAIR_DIR!" (
-    echo Removing crash-causing hair files...
-    del /Q "!HAIR_DIR!\Hair_M_SideSweptFringe.*" >nul 2>&1
-)
+$HairDir = Join-Path $UnpackDir "HalfswordUE5\Content\MetaHumans\Taro\MaleHair\Hair"
+$HairFiles = Join-Path $HairDir "Hair_M_SideSweptFringe.*"
+if (Test-Path $HairDir) {
+    Write-Host "Removing crash-causing hair files..." -ForegroundColor Gray
+    Remove-Item -Path $HairFiles -Force -ErrorAction SilentlyContinue
+}
 
-REM === Write DefaultGame.ini ===
-set "CONTENT_DIR=!UNPACK_DIR!\HalfswordUE5\Content"
-set "CONFIG_DIR=!UNPACK_DIR!\HalfswordUE5\Config"
-set "DEFAULTGAME=!CONFIG_DIR!\DefaultGame.ini"
+$ContentDir = Join-Path $UnpackDir "HalfswordUE5\Content"
+$ConfigDir = Join-Path $UnpackDir "HalfswordUE5\Config"
+if (-not (Test-Path $ConfigDir)) { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null }
 
-if not exist "!CONFIG_DIR!" mkdir "!CONFIG_DIR!"
+$DefaultGame = Join-Path $ConfigDir "DefaultGame.ini"
+Write-Host "Writing DefaultGame.ini..." -ForegroundColor Cyan
+$GameIniContent = @()
+if (Test-Path $DefaultGame) {
+    $InPps = $false
+    Get-Content $DefaultGame | ForEach-Object {
+        if ($_.StartsWith("[")) { $InPps = $false }
+        if ($_ -eq "[/Script/UnrealEd.ProjectPackagingSettings]") { $InPps = $true }
+        if (-not $InPps) { $GameIniContent += $_ }
+    }
+}
+$GameIniContent += ""
+$GameIniContent += "[/Script/UnrealEd.ProjectPackagingSettings]"
+$GameIniContent += "bSkipEditorContent=True"
+if (Test-Path $ContentDir) {
+    Get-ChildItem $ContentDir -Directory | ForEach-Object {
+        $GameIniContent += "+DirectoriesToNeverCook=(Path=`"/Game/$($_.Name)`")"
+    }
+}
+$GameIniContent | Set-Content $DefaultGame
 
-echo Writing DefaultGame.ini...
+$DefaultEngine = Join-Path $ConfigDir "DefaultEngine.ini"
+$EngineIniContent = @()
+if (Test-Path $DefaultEngine) {
+    $InCooker = $false
+    Get-Content $DefaultEngine | ForEach-Object {
+        if ($_.StartsWith("[")) { $InCooker = $false }
+        if ($_ -eq "[/Script/UnrealEd.CookerSettings]" -or $_ -eq "[Core.System]") { $InCooker = $true }
+        if (-not $InCooker -and -not ($_ -match "^\s*GlobalDefaultGameMode\s*=")) { $EngineIniContent += $_ }
+    }
+}
+$EngineIniContent += ""
+$EngineIniContent += "[/Script/UnrealEd.CookerSettings]"
+$EngineIniContent += "cook.AllowCookedDataInEditorBuilds=True"
+$EngineIniContent += "s.AllowUnversionedContentInEditor=1"
+$EngineIniContent += ""
+$EngineIniContent += "[Core.System]"
+$EngineIniContent += "CanUseUnversionedPropertySerialization=True"
+$EngineIniContent += ""
+$EngineIniContent += "[/Script/EngineSettings.GameMapsSettings]"
+$EngineIniContent += "GlobalDefaultGameMode="
+$EngineIniContent | Set-Content $DefaultEngine
 
-if exist "!DEFAULTGAME!" (
-    set "IN_SECTION=0"
-    > "!DEFAULTGAME!.tmp" (
-        for /f "usebackq delims=" %%L in ("!DEFAULTGAME!") do (
-            set "LINE=%%L"
-            if "!LINE:~0,1!"=="[" set "IN_SECTION=0"
-            if "!LINE!"=="[/Script/UnrealEd.ProjectPackagingSettings]" set "IN_SECTION=1"
-            if "!IN_SECTION!"=="0" echo !LINE!
-        )
-    )
-    move /Y "!DEFAULTGAME!.tmp" "!DEFAULTGAME!" >nul
-)
+$DefaultEditor = Join-Path $ConfigDir "DefaultEditor.ini"
+$EditorIniContent = @()
+if (Test-Path $DefaultEditor) {
+    $InCookSet = $false
+    Get-Content $DefaultEditor | ForEach-Object {
+        if ($_.StartsWith("[")) { $InCookSet = $false }
+        if ($_ -eq "[CookSettings]") { $InCookSet = $true }
+        if (-not $InCookSet) { $EditorIniContent += $_ }
+    }
+}
+$EditorIniContent += ""
+$EditorIniContent += "[CookSettings]"
+$EditorIniContent += "CookContentMissingSeverity=Warning"
+$EditorIniContent | Set-Content $DefaultEditor
 
-(
-    echo.
-    echo [/Script/UnrealEd.ProjectPackagingSettings]
-    echo bSkipEditorContent=True
-    for /d %%D in ("!CONTENT_DIR!\*") do echo +DirectoriesToNeverCook=(Path="/Game/%%~nxD"^)
-) >> "!DEFAULTGAME!"
+Write-Host "`nSetup complete!" -ForegroundColor Magenta
+Write-Host "Unpacked project is at: $(Join-Path $SourceDir 'HalfswordUE5')" -ForegroundColor Green
+Write-Host ""
+explorer.exe (Join-Path $SourceDir 'HalfswordUE5')
 
-REM === Write DefaultEngine.ini ===
-set "DEFAULTENGINE=!CONFIG_DIR!\DefaultEngine.ini"
-
-if exist "!DEFAULTENGINE!" (
-    set "IN_SECTION=0"
-    > "!DEFAULTENGINE!.tmp" (
-        for /f "usebackq delims=" %%L in ("!DEFAULTENGINE!") do (
-            set "LINE=%%L"
-            if "!LINE:~0,1!"=="[" set "IN_SECTION=0"
-            if "!LINE!"=="[/Script/UnrealEd.CookerSettings]" set "IN_SECTION=1"
-            if "!LINE!"=="[Core.System]" set "IN_SECTION=1"
-            if "!IN_SECTION!"=="0" echo !LINE!
-        )
-    )
-    move /Y "!DEFAULTENGINE!.tmp" "!DEFAULTENGINE!" >nul
-)
-
-(
-    echo.
-    echo [/Script/UnrealEd.CookerSettings]
-    echo cook.AllowCookedDataInEditorBuilds=True
-    echo s.AllowUnversionedContentInEditor=1
-    echo.
-    echo [Core.System]
-    echo CanUseUnversionedPropertySerialization=True
-) >> "!DEFAULTENGINE!"
-
-set "DEFAULTEDITOR=!CONFIG_DIR!\DefaultEditor.ini"
-
-if exist "!DEFAULTEDITOR!" (
-    set "IN_SECTION=0"
-    > "!DEFAULTEDITOR!.tmp" (
-        for /f "usebackq delims=" %%L in ("!DEFAULTEDITOR!") do (
-            set "LINE=%%L"
-            if "!LINE:~0,1!"=="[" set "IN_SECTION=0"
-            if "!LINE!"=="[CookSettings]" set "IN_SECTION=1"
-            if "!IN_SECTION!"=="0" echo !LINE!
-        )
-    )
-    move /Y "!DEFAULTEDITOR!.tmp" "!DEFAULTEDITOR!" >nul
-)
-
-(
-    echo.
-    echo [CookSettings]
-    echo CookContentMissingSeverity=Warning
-) >> "!DEFAULTEDITOR!"
-
-echo.
-echo Setup complete!
-echo Unpacked project is at: !SOURCE_DIR!\HalfswordUE5
-echo.
-explorer "!SOURCE_DIR!\HalfswordUE5"
-pause
+Write-Host "Press Enter to exit..."
+Read-Host
