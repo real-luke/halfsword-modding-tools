@@ -249,6 +249,21 @@ if ($PakFiles.Count -gt 0) {
     }
 }
 
+$LogicModsSrcDir = Join-Path $ScriptDir "LogicMods"
+$LogicModsDestDir = Join-Path $PaksFolder "LogicMods"
+
+if (Test-Path $LogicModsSrcDir) {
+    $LogicPakFiles = Get-ChildItem -Path $LogicModsSrcDir -Filter "*.pak" -File
+    if ($LogicPakFiles.Count -gt 0) {
+        if (-not (Test-Path $LogicModsDestDir)) { New-Item -Path $LogicModsDestDir -ItemType Directory -Force | Out-Null }
+        foreach ($Pak in $LogicPakFiles) {
+            Write-Host "Installing Blueprint mod: $($Pak.Name)" -ForegroundColor Green
+            Move-Item -Path $Pak.FullName -Destination $LogicModsDestDir -Force
+            $PaksInstalled = $true
+        }
+    }
+}
+
 # --- FINALIZE ---
 Write-Host "`nSetup complete!" -ForegroundColor Magenta
 
