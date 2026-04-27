@@ -30,7 +30,7 @@ if ($env:SCRIPT_ARGS -and $env:SCRIPT_ARGS.Trim() -ne "") {
 }
 
 if (Test-Path $Src) {
-    $Src = (Resolve-Path $Src).Path
+    $Src = (Get-Item -LiteralPath $Src).FullName
 } else {
     Write-Host "[!] Source missing: $Src" -ForegroundColor Red
     Write-Host "Press Enter to exit..."
